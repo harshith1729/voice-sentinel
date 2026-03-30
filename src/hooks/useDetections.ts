@@ -24,7 +24,7 @@ export function useDetections() {
       .select('*')
       .eq('user_id', user.id)
       .order('timestamp', { ascending: false });
-    setDetections(data || []);
+    setDetections((data as unknown as Detection[]) || []);
     setLoading(false);
   };
 
