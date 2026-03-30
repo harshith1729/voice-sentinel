@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Upload, Activity, Shield, AlertTriangle, Lock, Wifi, WifiOff, Send } from 'lucide-react';
+import { Mic, MicOff, Upload, Activity, Shield, AlertTriangle, Lock, Wifi, WifiOff, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useDetections } from '@/hooks/useDetections';
 import { useProfile } from '@/hooks/useProfile';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 type ResultType = 'REAL' | 'FAKE' | 'SUSPICIOUS' | 'FALLBACK' | null;
@@ -16,6 +18,7 @@ const BACKEND_URL = 'http://localhost:8501';
 const LiveMonitor = () => {
   const { addDetection, detections } = useDetections();
   const { profile, updateProfile } = useProfile();
+  const { user } = useAuth();
   const [recording, setRecording] = useState(false);
   const [result, setResult] = useState<ResultType>(null);
   const [confidence, setConfidence] = useState(0);
@@ -103,7 +106,23 @@ const LiveMonitor = () => {
     const c = 0.6 + Math.random() * 0.35;
     setResult(r);
     setConfidence(c);
-    await addDetection({ input_type: type, result: r, confidence: c, alert_sent: false });
+    let alertSent = false;
+    // Send email alert if applicable
+    if ((r === 'FAKE' && profile?.alert_on_fake) || (r === 'SUSPICIOUS' && profile?.alert_on_suspicious)) {
+      try {
+        await supabase.functions.invoke('send-alert-email', {
+          body: {
+            recipientEmail: user?.email,
+            recipientName: profile?.full_name || 'User',
+            result: r,
+            confidence: c,
+            inputType: type,
+          },
+        });
+        alertSent = true;
+      } catch { /* silent */ }
+    }
+    await addDetection({ input_type: type, result: r, confidence: c, alert_sent: alertSent });
     // Trigger ESP32
     if (esp32Online && esp32Ip) {
       try {
@@ -377,14 +396,20 @@ const LiveMonitor = () => {
             </div>
           </div>
 
-          {/* Twilio SMS */}
+          {/* Email Alerts Status */}
           <div className="glass-card p-4">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Send className="w-4 h-4 text-primary" /> SMS Alerts
+              <Send className="w-4 h-4 text-primary" /> Email Alerts
             </h3>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Enable SMS alerts</span>
-              <Switch checked={profile?.twilio_enabled || false} onCheckedChange={v => updateProfile({ twilio_enabled: v })} />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">FAKE alert</span>
+                <span className={`text-xs ${profile?.alert_on_fake ? 'text-primary' : 'text-muted-foreground'}`}>{profile?.alert_on_fake ? 'ON' : 'OFF'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">SUSPICIOUS alert</span>
+                <span className={`text-xs ${profile?.alert_on_suspicious ? 'text-warning' : 'text-muted-foreground'}`}>{profile?.alert_on_suspicious ? 'ON' : 'OFF'}</span>
+              </div>
             </div>
           </div>
         </div>
