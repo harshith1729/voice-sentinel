@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { User, Shield, Cpu, Bell, Trash2 } from 'lucide-react';
+import { User, Shield, Cpu, Mail, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 
@@ -20,10 +20,10 @@ const SettingsPage = () => {
   const [phone, setPhone] = useState(profile?.phone || '');
   const [address, setAddress] = useState(profile?.address || { street: '', city: '', state: '', pincode: '' });
   const [esp32Ip, setEsp32Ip] = useState(profile?.esp32_ip || '192.168.46.222');
-  const [twilioPhone, setTwilioPhone] = useState(profile?.twilio_phone || '');
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
 
   const saveProfile = async () => {
     await updateProfile({ full_name: name, phone, address });
@@ -51,8 +51,26 @@ const SettingsPage = () => {
   };
 
   const saveAlerts = async () => {
-    await updateProfile({ twilio_phone: twilioPhone });
-    toast.success('Alert settings saved');
+    toast.success('Alert preferences saved');
+  };
+
+  const sendTestEmail = async () => {
+    setSendingTest(true);
+    try {
+      const { error } = await supabase.functions.invoke('send-alert-email', {
+        body: {
+          recipientEmail: user?.email,
+          recipientName: profile?.full_name || 'User',
+          isTest: true,
+        },
+      });
+      if (error) throw error;
+      toast.success('Test email sent! Check your inbox.');
+    } catch {
+      toast.error('Failed to send test email. Check that the API key is configured.');
+    } finally {
+      setSendingTest(false);
+    }
   };
 
   const deleteAccount = async () => {
@@ -121,22 +139,35 @@ const SettingsPage = () => {
         </div>
       </section>
 
-      {/* Alerts */}
+      {/* Email Alerts */}
       <section className="glass-card p-6 space-y-4">
-        <h2 className="font-semibold flex items-center gap-2"><Bell className="w-5 h-5 text-primary" /> Alerts</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Mail className="w-5 h-5 text-primary" /> Email Alerts</h2>
         <div>
-          <Label>Twilio Phone Number</Label>
-          <Input value={twilioPhone} onChange={e => setTwilioPhone(e.target.value)} placeholder="+1234567890" className="bg-secondary border-border mt-1" />
+          <Label className="text-muted-foreground text-xs">Alert email</Label>
+          <Input value={user?.email || ''} disabled className="bg-secondary border-border opacity-60 mt-1" />
         </div>
+        <Separator className="bg-border" />
         <div className="flex items-center justify-between">
-          <span className="text-sm">Alert on FAKE detection</span>
+          <div>
+            <span className="text-sm">Alert on FAKE detection</span>
+            <p className="text-xs text-muted-foreground">Send immediate email when a fake voice is detected</p>
+          </div>
           <Switch checked={profile?.alert_on_fake ?? true} onCheckedChange={v => updateProfile({ alert_on_fake: v })} />
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm">Alert on SUSPICIOUS detection</span>
-          <Switch checked={profile?.alert_on_suspicious ?? true} onCheckedChange={v => updateProfile({ alert_on_suspicious: v })} />
+          <div>
+            <span className="text-sm">Alert on SUSPICIOUS detection</span>
+            <p className="text-xs text-muted-foreground">Send warning email for suspicious voice patterns</p>
+          </div>
+          <Switch checked={profile?.alert_on_suspicious ?? false} onCheckedChange={v => updateProfile({ alert_on_suspicious: v })} />
         </div>
-        <Button onClick={saveAlerts} className="bg-primary text-primary-foreground hover:bg-primary/90">Save Alerts</Button>
+        <Separator className="bg-border" />
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={sendTestEmail} disabled={sendingTest} className="border-border">
+            {sendingTest ? 'Sending...' : 'Send Test Email'}
+          </Button>
+          <Button onClick={saveAlerts} className="bg-primary text-primary-foreground hover:bg-primary/90">Save Alerts</Button>
+        </div>
       </section>
 
       {/* Danger Zone */}
