@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { User, Shield, Cpu, Bell, Trash2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 
 const SettingsPage = () => {

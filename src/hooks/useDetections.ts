@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface Detection {
@@ -24,7 +24,7 @@ export function useDetections() {
       .select('*')
       .eq('user_id', user.id)
       .order('timestamp', { ascending: false });
-    setDetections(data || []);
+    setDetections((data as unknown as Detection[]) || []);
     setLoading(false);
   };
 
