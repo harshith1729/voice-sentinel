@@ -399,7 +399,7 @@ const LiveMonitor = () => {
           {/* Email Alerts Status */}
           <div className="glass-card p-4">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Send className="w-4 h-4 text-primary" /> Email Alerts
+              <Mail className="w-4 h-4 text-primary" /> Email Alerts
             </h3>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
