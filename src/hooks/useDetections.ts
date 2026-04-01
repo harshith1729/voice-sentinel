@@ -7,7 +7,7 @@ export interface Detection {
   user_id: string;
   timestamp: string;
   input_type: 'live' | 'upload';
-  result: 'REAL' | 'FAKE' | 'SUSPICIOUS' | 'FALLBACK';
+  result: "REAL" | "FAKE" | "SUSPICIOUS" | "FALLBACK" | "POSSIBLE"
   confidence: number;
   alert_sent: boolean;
 }
