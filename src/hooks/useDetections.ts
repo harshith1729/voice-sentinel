@@ -30,6 +30,29 @@ export function useDetections() {
 
   useEffect(() => {
     fetchDetections();
+
+    if (!user) return;
+
+    // Realtime subscription for live updates
+    const channel = supabase
+      .channel('detections-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'detections',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchDetections();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const addDetection = async (detection: Omit<Detection, 'id' | 'user_id' | 'timestamp'>) => {
