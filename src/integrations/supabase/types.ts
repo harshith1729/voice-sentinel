@@ -16,30 +16,30 @@ export type Database = {
     Tables: {
       detections: {
         Row: {
-          alert_sent: boolean | null
-          confidence: number
+          confidence: number | null
           id: string
           input_type: string
           result: string
           timestamp: string | null
+          twilio_alert_sent: boolean | null
           user_id: string
         }
         Insert: {
-          alert_sent?: boolean | null
-          confidence?: number
+          confidence?: number | null
           id?: string
           input_type: string
           result: string
           timestamp?: string | null
+          twilio_alert_sent?: boolean | null
           user_id: string
         }
         Update: {
-          alert_sent?: boolean | null
-          confidence?: number
+          confidence?: number | null
           id?: string
           input_type?: string
           result?: string
           timestamp?: string | null
+          twilio_alert_sent?: boolean | null
           user_id?: string
         }
         Relationships: []
@@ -47,12 +47,10 @@ export type Database = {
       profiles: {
         Row: {
           address: Json | null
-          alert_on_fake: boolean | null
-          alert_on_suspicious: boolean | null
           created_at: string | null
           esp32_ip: string | null
           fallback_pin: string | null
-          full_name: string
+          full_name: string | null
           id: string
           phone: string | null
           twilio_enabled: boolean | null
@@ -60,12 +58,10 @@ export type Database = {
         }
         Insert: {
           address?: Json | null
-          alert_on_fake?: boolean | null
-          alert_on_suspicious?: boolean | null
           created_at?: string | null
           esp32_ip?: string | null
           fallback_pin?: string | null
-          full_name?: string
+          full_name?: string | null
           id: string
           phone?: string | null
           twilio_enabled?: boolean | null
@@ -73,12 +69,10 @@ export type Database = {
         }
         Update: {
           address?: Json | null
-          alert_on_fake?: boolean | null
-          alert_on_suspicious?: boolean | null
           created_at?: string | null
           esp32_ip?: string | null
           fallback_pin?: string | null
-          full_name?: string
+          full_name?: string | null
           id?: string
           phone?: string | null
           twilio_enabled?: boolean | null
