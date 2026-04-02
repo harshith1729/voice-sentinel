@@ -9,10 +9,6 @@ export interface Profile {
   address: { street: string; city: string; state: string; pincode: string };
   fallback_pin: string;
   esp32_ip: string;
-  twilio_enabled: boolean;
-  twilio_phone: string;
-  alert_on_fake: boolean;
-  alert_on_suspicious: boolean;
   created_at: string;
 }
 
@@ -25,17 +21,17 @@ export function useProfile() {
     if (!user) return;
     const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
     if (data) {
+      const addr = data.address as any;
       setProfile({
-        ...data,
+        id: data.id,
+        full_name: data.full_name ?? '',
         phone: data.phone ?? '',
         fallback_pin: data.fallback_pin ?? '',
         esp32_ip: data.esp32_ip ?? '192.168.46.222',
-        twilio_phone: data.twilio_phone ?? '',
-        twilio_enabled: data.twilio_enabled ?? false,
-        alert_on_fake: data.alert_on_fake ?? true,
-        alert_on_suspicious: data.alert_on_suspicious ?? true,
         created_at: data.created_at ?? '',
-        address: (data.address as any) ?? { street: '', city: '', state: '', pincode: '' },
+        address: addr && typeof addr === 'object' && !Array.isArray(addr)
+          ? { street: addr.street || '', city: addr.city || '', state: addr.state || '', pincode: addr.pincode || '' }
+          : { street: '', city: '', state: '', pincode: '' },
       });
     }
     setLoading(false);
