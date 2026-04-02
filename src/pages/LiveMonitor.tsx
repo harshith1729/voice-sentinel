@@ -664,29 +664,6 @@ const LiveMonitor = () => {
             </div>
           </div>
 
-          {/* Email Alerts status */}
-          <div className="glass-card p-4">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Mail className="w-4 h-4 text-primary" /> Email Alerts
-            </h3>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">FAKE alert</span>
-                <span className={profile?.alert_on_fake ? 'text-green-400' : 'text-muted-foreground'}>
-                  {profile?.alert_on_fake ? '● ON' : '○ OFF'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">SUSPICIOUS alert</span>
-                <span className={profile?.alert_on_suspicious ? 'text-yellow-400' : 'text-muted-foreground'}>
-                  {profile?.alert_on_suspicious ? '● ON' : '○ OFF'}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground/50 pt-1">
-                Alerts sent to: {user?.email}
-              </p>
-            </div>
-          </div>
 
         </div>
       </div>
