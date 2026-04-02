@@ -256,26 +256,8 @@ const LiveMonitor = () => {
       setResult(display);
       setConfidence(finalConf);
 
-      // ── Send email alert if FAKE ─────────────────────────
-      let alertSent = false;
-      if (display === 'FAKE' && profile?.alert_on_fake) {
-        try {
-          await supabase.functions.invoke('send-alert-email', {
-            body: {
-              recipientEmail: user?.email,
-              recipientName:  profile?.full_name || 'User',
-              result:         display,
-              confidence:     finalConf,
-              inputType:      mode,
-            },
-          });
-          alertSent = true;
-          toast.warning('📧 Alert email sent to your registered address');
-        } catch { /* silent fail */ }
-      }
-
       // ── Log to Supabase ──────────────────────────────────
-      await addDetection({ input_type: mode, result: display, confidence: finalConf, alert_sent: alertSent });
+      await addDetection({ input_type: mode, result: display, confidence: finalConf, alert_sent: false });
 
       // ── Trigger hardware / show PIN modal ────────────────
       if (display === 'FALLBACK') {

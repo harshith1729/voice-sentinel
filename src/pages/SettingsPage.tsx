@@ -1,29 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { User, Shield, Cpu, Mail, Trash2 } from 'lucide-react';
+import { User, Shield, Cpu, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 
 const SettingsPage = () => {
   const { user, signOut } = useAuth();
-  const { profile, updateProfile } = useProfile();
+  const { profile, loading, updateProfile } = useProfile();
   const navigate = useNavigate();
 
-  const [name, setName] = useState(profile?.full_name || '');
-  const [phone, setPhone] = useState(profile?.phone || '');
-  const [address, setAddress] = useState(profile?.address || { street: '', city: '', state: '', pincode: '' });
-  const [esp32Ip, setEsp32Ip] = useState(profile?.esp32_ip || '192.168.46.222');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState({ street: '', city: '', state: '', pincode: '' });
+  const [esp32Ip, setEsp32Ip] = useState('192.168.46.222');
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [sendingTest, setSendingTest] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Sync form state when profile loads
+  useEffect(() => {
+    if (profile) {
+      setName(profile.full_name || '');
+      setPhone(profile.phone || '');
+      setAddress(profile.address || { street: '', city: '', state: '', pincode: '' });
+      setEsp32Ip(profile.esp32_ip || '192.168.46.222');
+    }
+  }, [profile]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const saveProfile = async () => {
     await updateProfile({ full_name: name, phone, address });
@@ -31,46 +49,25 @@ const SettingsPage = () => {
   };
 
   const changePin = async () => {
-    if (oldPin !== profile?.fallback_pin) { toast.error('Old PIN incorrect'); return; }
+    if (oldPin !== profile?.fallback_pin) { toast.error('Current PIN is incorrect'); return; }
     if (newPin.length !== 6) { toast.error('PIN must be 6 digits'); return; }
+    if (newPin !== confirmPin) { toast.error('New PINs do not match'); return; }
     await updateProfile({ fallback_pin: newPin });
-    setOldPin(''); setNewPin('');
-    toast.success('PIN updated');
+    setOldPin(''); setNewPin(''); setConfirmPin('');
+    toast.success('PIN updated successfully');
   };
 
   const changePassword = async () => {
-    if (newPassword.length < 6) { toast.error('Min 6 characters'); return; }
+    if (newPassword.length < 6) { toast.error('Password must be at least 6 characters'); return; }
+    if (newPassword !== confirmPassword) { toast.error('Passwords do not match'); return; }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) toast.error(error.message);
-    else { toast.success('Password updated'); setNewPassword(''); }
+    else { toast.success('Password updated'); setNewPassword(''); setConfirmPassword(''); }
   };
 
   const saveHardware = async () => {
     await updateProfile({ esp32_ip: esp32Ip });
     toast.success('Hardware settings saved');
-  };
-
-  const saveAlerts = async () => {
-    toast.success('Alert preferences saved');
-  };
-
-  const sendTestEmail = async () => {
-    setSendingTest(true);
-    try {
-      const { error } = await supabase.functions.invoke('send-alert-email', {
-        body: {
-          recipientEmail: user?.email,
-          recipientName: profile?.full_name || 'User',
-          isTest: true,
-        },
-      });
-      if (error) throw error;
-      toast.success('Test email sent! Check your inbox.');
-    } catch {
-      toast.error('Failed to send test email. Check that the API key is configured.');
-    } finally {
-      setSendingTest(false);
-    }
   };
 
   const deleteAccount = async () => {
@@ -111,19 +108,27 @@ const SettingsPage = () => {
         <h2 className="font-semibold flex items-center gap-2"><Shield className="w-5 h-5 text-primary" /> Security</h2>
         <div className="space-y-3">
           <Label>Change Fallback PIN</Label>
-          <div className="flex gap-3">
-            <Input type="password" value={oldPin} onChange={e => setOldPin(e.target.value)} placeholder="Old PIN" maxLength={6} className="bg-secondary border-border" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input type="password" value={oldPin} onChange={e => setOldPin(e.target.value)} placeholder="Current PIN" maxLength={6} className="bg-secondary border-border" />
             <Input type="password" value={newPin} onChange={e => setNewPin(e.target.value)} placeholder="New PIN" maxLength={6} className="bg-secondary border-border" />
-            <Button variant="outline" onClick={changePin} className="border-border">Update</Button>
+            <Input type="password" value={confirmPin} onChange={e => setConfirmPin(e.target.value)} placeholder="Confirm PIN" maxLength={6} className="bg-secondary border-border" />
           </div>
+          {newPin && confirmPin && newPin !== confirmPin && (
+            <p className="text-xs text-red-400">PINs do not match</p>
+          )}
+          <Button variant="outline" onClick={changePin} className="border-border">Update PIN</Button>
         </div>
         <Separator className="bg-border" />
         <div className="space-y-3">
           <Label>Change Password</Label>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="New password" className="bg-secondary border-border" />
-            <Button variant="outline" onClick={changePassword} className="border-border">Update</Button>
+            <Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirm password" className="bg-secondary border-border" />
           </div>
+          {newPassword && confirmPassword && newPassword !== confirmPassword && (
+            <p className="text-xs text-red-400">Passwords do not match</p>
+          )}
+          <Button variant="outline" onClick={changePassword} className="border-border">Update Password</Button>
         </div>
       </section>
 
@@ -139,40 +144,9 @@ const SettingsPage = () => {
         </div>
       </section>
 
-      {/* Email Alerts */}
-      <section className="glass-card p-6 space-y-4">
-        <h2 className="font-semibold flex items-center gap-2"><Mail className="w-5 h-5 text-primary" /> Email Alerts</h2>
-        <div>
-          <Label className="text-muted-foreground text-xs">Alert email</Label>
-          <Input value={user?.email || ''} disabled className="bg-secondary border-border opacity-60 mt-1" />
-        </div>
-        <Separator className="bg-border" />
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm">Alert on FAKE detection</span>
-            <p className="text-xs text-muted-foreground">Send immediate email when a fake voice is detected</p>
-          </div>
-          <Switch checked={profile?.alert_on_fake ?? true} onCheckedChange={v => updateProfile({ alert_on_fake: v })} />
-        </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm">Alert on SUSPICIOUS detection</span>
-            <p className="text-xs text-muted-foreground">Send warning email for suspicious voice patterns</p>
-          </div>
-          <Switch checked={profile?.alert_on_suspicious ?? false} onCheckedChange={v => updateProfile({ alert_on_suspicious: v })} />
-        </div>
-        <Separator className="bg-border" />
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={sendTestEmail} disabled={sendingTest} className="border-border">
-            {sendingTest ? 'Sending...' : 'Send Test Email'}
-          </Button>
-          <Button onClick={saveAlerts} className="bg-primary text-primary-foreground hover:bg-primary/90">Save Alerts</Button>
-        </div>
-      </section>
-
       {/* Danger Zone */}
       <section className="glass-card p-6 border-danger/30">
-        <h2 className="font-semibold flex items-center gap-2 text-danger"><Trash2 className="w-5 h-5" /> Danger Zone</h2>
+        <h2 className="font-semibold flex items-center gap-2 text-destructive"><Trash2 className="w-5 h-5" /> Danger Zone</h2>
         <p className="text-sm text-muted-foreground mt-2 mb-4">Permanently delete your account and all data.</p>
         <Button variant="destructive" onClick={deleteAccount}>Delete Account</Button>
       </section>
