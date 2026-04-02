@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Upload, Activity, Shield, AlertTriangle, Lock, Wifi, WifiOff, Mail, KeyRound, RotateCcw } from 'lucide-react';
+import { Mic, MicOff, Upload, Activity, Shield, AlertTriangle, Lock, Wifi, WifiOff, KeyRound, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useDetections } from '@/hooks/useDetections';
