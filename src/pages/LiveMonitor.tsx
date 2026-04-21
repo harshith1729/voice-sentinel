@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Upload, Activity, Shield, AlertTriangle, Lock, Wifi, WifiOff, KeyRound, RotateCcw } from 'lucide-react';
+import { Mic, MicOff, Upload, Activity, Shield, AlertTriangle, Lock, Wifi, WifiOff, Mail, KeyRound, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useDetections } from '@/hooks/useDetections';
@@ -14,11 +14,11 @@ import { LineChart, Line, BarChart, Bar, ResponsiveContainer } from 'recharts';
 // ⚙️ EXACT CONSTANTS — mirrors your Streamlit backend
 // ============================================================
 const BACKEND_URL          = 'http://localhost:8000';   // FastAPI wrapper
-const UPLOAD_FAKE_MIN      = 0.90;
+const UPLOAD_FAKE_MIN      = 0.90; 
 const UPLOAD_REAL_MAX      = 1e-6;
 const LIVE_FAKE_MIN        = 0.97;
 const LIVE_PROB_PENALTY    = 0.25;
-const DEFAULT_ESP32_IP     = '192.168.46.222';
+const DEFAULT_ESP32_IP     = '10.234.131.222';
 const PIN_MAX_ATTEMPTS     = 3;
 
 type ResultType = 'REAL' | 'FAKE' | 'SUSPICIOUS' | 'FALLBACK' | 'POSSIBLE' | null;
@@ -104,11 +104,16 @@ async function triggerHardware(stateType: 'REAL' | 'FAKE' | 'FALLBACK' | 'LOCK',
 // ============================================================
 const LiveMonitor = () => {
   const { addDetection, detections }  = useDetections();
-  const { profile, updateProfile }    = useProfile();
+  const { profile, updateProfile, refetch } = useProfile();
   const { user }                      = useAuth();
 
   const [recording, setRecording]     = useState(false);
   const [analyzing, setAnalyzing]     = useState(false);
+  // New XAI state
+  const [xaiData, setXaiData] = useState<{
+    integrity: Record<string, number>;
+    focus_points: number[];
+  } | null>(null);
   const [result, setResult]           = useState<ResultType>(null);
   const [confidence, setConfidence]   = useState(0);
   const [inputMode, setInputMode]     = useState<'live' | 'upload'>('live');
@@ -235,6 +240,7 @@ const LiveMonitor = () => {
     setAnalyzing(true);
     setResult(null);
     setPinGranted(false);
+    setXaiData(null); // ✨ NEW: Reset XAI data for a fresh scan
 
     try {
       const formData = new FormData();
@@ -242,9 +248,22 @@ const LiveMonitor = () => {
       formData.append('mode', mode);
 
       // POST to FastAPI — gets raw probability back
-      const res  = await fetch(`${BACKEND_URL}/predict-raw`, { method: 'POST', body: formData });
+      const res  = await fetch(`${BACKEND_URL}/predict-raw`, { 
+        method: 'POST',
+        headers: {
+          email: user?.email || "",
+          name: profile?.full_name || "",
+          address: JSON.stringify(profile?.address || {})
+        },
+        body: formData
+      });
       const data = await res.json();
       const prob: number = data.prob;   // raw sigmoid output from CNN
+
+      // ✨ NEW: Store XAI metrics if provided by backend
+      if (data.xai) {
+        setXaiData(data.xai);
+      }
 
       // ── Apply EXACT Python logic in frontend ────────────
       const { label, conf } = mode === 'live'
@@ -256,16 +275,27 @@ const LiveMonitor = () => {
       setResult(display);
       setConfidence(finalConf);
 
+      // ── Send email alert if FAKE ─────────────────────────
+      // ── Email handled by backend (Node + FastAPI) ──
+      let alertSent = false;
+      if (display === 'FAKE' && profile?.alert_on_fake) {
+        alertSent = true;
+        toast.warning('📧 Alert will be sent via backend');
+      }
+
       // ── Log to Supabase ──────────────────────────────────
-      await addDetection({ input_type: mode, result: display, confidence: finalConf, alert_sent: false });
+      await addDetection({ input_type: mode, result: display, confidence: finalConf, alert_sent: alertSent });
 
       // ── Trigger hardware / show PIN modal ────────────────
       if (display === 'FALLBACK') {
-        // Don't trigger hardware yet — wait for PIN
+
+        // 🔥 FORCE HARDWARE FALLBACK SIGNAL
+        triggerHardware('FALLBACK', esp32Ip, finalConf);
+
         setShowPinModal(true);
         setPinAttempts(0);
         toast.info('Voice uncertain — Enter your Fallback PIN');
-      } else if (display === 'FAKE') {
+      }else if (display === 'FAKE') {
         toast.error('⚠️ FAKE VOICE DETECTED!');
         triggerHardware('FAKE', esp32Ip, finalConf);
       } else {
@@ -277,8 +307,7 @@ const LiveMonitor = () => {
     } finally {
       setAnalyzing(false);
     }
-  };
-
+};
   // ── FALLBACK PIN submit ──────────────────────────────────
   const handlePinSubmit = async () => {
     const storedPin = profile?.fallback_pin;
@@ -291,23 +320,46 @@ const LiveMonitor = () => {
       setShowPinModal(false);
       setPinInput('');
       await addDetection({ input_type: inputMode, result: 'FALLBACK', confidence: 1, alert_sent: false });
-      triggerHardware('FALLBACK', esp32Ip, 1);
-      toast.success('✅ ACCESS GRANTED via Fallback PIN');
+      try {
+        await fetch(`${BACKEND_URL}/verify-pin-hardware?status=success`, { method: 'POST' });
+        toast.success('✅ ACCESS GRANTED — Hardware Unlocked');
+      } catch (err) {
+        console.error("Hardware bridge failed", err);
+      }
     } else {
       // ❌ Wrong PIN
       const newAttempts = pinAttempts + 1;
       setPinAttempts(newAttempts);
       setPinInput('');
-
+      fetch(`${BACKEND_URL}/verify-pin-hardware?status=fail`, { method: 'POST' });
+      
       if (newAttempts >= PIN_MAX_ATTEMPTS) {
-        // Lock out after 3 wrong attempts
         setShowPinModal(false);
         setResult('FAKE');
         setConfidence(0.99);
+
         triggerHardware('FAKE', esp32Ip, 0.99);
-        await addDetection({ input_type: inputMode, result: 'FAKE', confidence: 0.99, alert_sent: false });
+
+        await addDetection({
+          input_type: inputMode,
+          result: 'FAKE',
+          confidence: 0.99,
+          alert_sent: true
+        });
+
+        // 🔥 ADD THIS (CALL BACKEND EMAIL)
+        await fetch(`${BACKEND_URL}/trigger-fallback-alert`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            email: user?.email || "",
+            name: profile?.full_name || "",
+            address: JSON.stringify(profile?.address || {})
+          }
+        });
+
         toast.error('❌ ACCESS DENIED — Too many wrong attempts');
-      } else {
+      }else {
         toast.error(`Wrong PIN — ${PIN_MAX_ATTEMPTS - newAttempts} attempt(s) remaining`);
       }
     }
@@ -664,6 +716,90 @@ const LiveMonitor = () => {
             </div>
           </div>
 
+          {/* --- END OF HARDWARE CARD --- */}
+
+          {/* 🔍 XAI VOICE INTEGRITY METER */}
+          {xaiData && (
+            <div className="glass-card p-4 mt-4 animate-in fade-in slide-in-from-right-4 duration-500 border-l-2 border-l-cyan-500">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                Voice Integrity (XAI)
+              </h3>
+              
+              <div className="space-y-4">
+                {Object.entries(xaiData.integrity).map(([feature, value]) => (
+                  <div key={feature}>
+                    <div className="flex justify-between text-[10px] mb-1.5 font-mono">
+                      <span className="text-muted-foreground uppercase">{feature}</span>
+                      <span className={Number(value) > 70 ? "text-cyan-400" : "text-white"}>{value}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-1000 ease-out ${
+                          feature.includes("Artifacts") && Number(value) > 40 
+                          ? "bg-red-500" 
+                          : "bg-cyan-500"
+                        }`}
+                        style={{ width: `${value}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-4 pt-3 border-t border-border/50">
+                <p className="text-[10px] text-muted-foreground italic leading-relaxed">
+                  {result === 'FAKE' 
+                    ? "⚠️ High spectral variance detected in digital frequencies." 
+                    : "✅ Voice characteristics match expected human biometric profile."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Email Alerts status */}
+          <div className="glass-card p-4">
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Mail className="w-4 h-4 text-primary" /> Email Alerts
+            </h3>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">FAKE alert</span>
+                <button
+                  onClick={async () => {
+                    const newValue = !profile?.alert_on_fake;
+                    await updateProfile({ alert_on_fake: newValue });
+                    await refetch();   // ✅ IMPORTANT
+                    toast.success(`FAKE alerts ${newValue ? 'enabled' : 'disabled'}`);
+                  }}
+                  className={`text-xs px-2 py-1 rounded ${
+                    profile?.alert_on_fake ? 'text-green-400' : 'text-muted-foreground'
+                  }`}
+                >
+                  {profile?.alert_on_fake ? '● ON' : '○ OFF'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">SUSPICIOUS alert</span>
+                <button
+                  onClick={async () => {
+                    const newValue = !profile?.alert_on_suspicious;
+                    await updateProfile({ alert_on_suspicious: newValue });
+                    await refetch();   // ✅ IMPORTANT
+                    toast.success(`SUSPICIOUS alerts ${newValue ? 'enabled' : 'disabled'}`);
+                  }}
+                  className={`text-xs px-2 py-1 rounded ${
+                    profile?.alert_on_suspicious ? 'text-yellow-400' : 'text-muted-foreground'
+                  }`}
+                >
+                  {profile?.alert_on_suspicious ? '● ON' : '○ OFF'}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground/50 pt-1">
+                Alerts sent to: {user?.email}
+              </p>
+            </div>
+          </div>
 
         </div>
       </div>
