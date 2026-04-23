@@ -313,25 +313,31 @@ const LiveMonitor = () => {
     const storedPin = profile?.fallback_pin;
 
     if (pinInput === storedPin) {
-      // ✅ Correct PIN
-      setPinGranted(true);
-      setResult('FALLBACK');
-      setConfidence(1);
-      setShowPinModal(false);
-      setPinInput('');
-      await addDetection({ input_type: inputMode, result: 'FALLBACK', confidence: 1, alert_sent: false });
-      try {
-        await fetch(`${BACKEND_URL}/verify-pin-hardware?status=success`, { method: 'POST' });
-        toast.success('✅ ACCESS GRANTED — Hardware Unlocked');
-      } catch (err) {
-        console.error("Hardware bridge failed", err);
-      }
+    setPinGranted(true);
+    setResult('REAL');        // ← Change 'FALLBACK' to 'REAL' so green LED lights up in UI
+    setConfidence(1);
+    setShowPinModal(false);
+    setPinInput('');
+    await addDetection({ input_type: inputMode, result: 'FALLBACK', confidence: 1, alert_sent: false });
+    try {
+      const res = await fetch(`${BACKEND_URL}/verify-pin-hardware?status=success`, { method: 'POST' });
+      const data = await res.json();
+      console.log('PIN hardware response:', data);
+      toast.success('✅ ACCESS GRANTED — Hardware Unlocked');
+    } catch (err) {
+      console.error("Hardware bridge failed", err);
+      toast.error('Hardware signal failed — check backend');
+    }
     } else {
       // ❌ Wrong PIN
       const newAttempts = pinAttempts + 1;
       setPinAttempts(newAttempts);
       setPinInput('');
-      fetch(`${BACKEND_URL}/verify-pin-hardware?status=fail`, { method: 'POST' });
+      try {
+        await fetch(`${BACKEND_URL}/verify-pin-hardware?status=fail`, { method: 'POST' });
+      } catch (err) {
+        console.error('Failed to notify hardware of wrong PIN:', err);
+      }
       
       if (newAttempts >= PIN_MAX_ATTEMPTS) {
         setShowPinModal(false);
@@ -700,9 +706,10 @@ const LiveMonitor = () => {
               {/* LED indicators */}
               <div className="grid grid-cols-4 gap-1 text-center">
                 {[
-                  { label: 'Green', color: 'bg-green-400',  active: result === 'REAL' },
+                  // Find the LED indicators grid and change the Yell. entry:
+                  { label: 'Green', color: 'bg-green-400',  active: result === 'REAL' || pinGranted },   // ← add pinGranted
                   { label: 'Red',   color: 'bg-red-400',    active: result === 'FAKE' },
-                  { label: 'Yell.', color: 'bg-yellow-400', active: result === 'FALLBACK' },
+                  { label: 'Yell.', color: 'bg-yellow-400', active: result === 'FALLBACK' && !pinGranted }, // ← add !pinGranted
                   { label: 'Buzz',  color: 'bg-gray-400',   active: result === 'FAKE' },
                 ].map(led => (
                   <div key={led.label} className="text-xs">

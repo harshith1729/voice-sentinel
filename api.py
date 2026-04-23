@@ -1,5 +1,5 @@
 import json
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, UploadFile, File, Form, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 import librosa
@@ -154,6 +154,23 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status":"ok"}
+
+# ============================================================
+# 🔑 PIN RESULT FORWARDER → ESP32
+# ============================================================
+@app.post("/verify-pin-hardware")
+async def verify_pin_hardware(status: str = Query(...)):   # ← add Query(...)
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.get(
+                f"{ESP32_IP}/pin_result",
+                params={"status": status},
+                timeout=3.0
+            )
+        return {"status": "forwarded", "pin_status": status}
+    except Exception as e:
+        print("ESP32 pin_result error:", e)
+        return {"status": "esp32_unreachable", "error": str(e)}
 
 # ============================================================
 # 🎯 MAIN API (FINAL)
